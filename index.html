@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Teste die Elastizität deiner Golfbälle mit dem Smartphone-Mikrofon. Perfekt für Lakeball-Käufer – finde heraus, welche Bälle noch spieltauglich sind.">
+    <title>BounceCheck ⛳ – Golfball Elastizitäts-Tester</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <!-- Animated Background Particles -->
+    <canvas id="bgCanvas" aria-hidden="true"></canvas>
+
+    <!-- ===== HERO SECTION ===== -->
+    <header class="hero" id="hero">
+        <div class="hero__badge">⛳ Bounce Analyzer Pro</div>
+        <h1 class="hero__title">
+            <span class="hero__title-line">Bounce</span>
+            <span class="hero__title-line hero__title-accent">Check</span>
+        </h1>
+        <p class="hero__subtitle">
+            Teste die Elastizität deiner Golfbälle – einfach fallen lassen und hören. 
+            <br>Perfekt für <strong>Lakeball-Käufer</strong>, die wissen wollen, welche Bälle noch spieltauglich sind.
+        </p>
+        <button class="btn btn--primary btn--glow" id="startBtn">
+            <span class="btn__icon">🎤</span>
+            <span class="btn__text">Test starten</span>
+        </button>
+        <div class="hero__scroll-hint" aria-hidden="true">
+            <span>Mehr erfahren</span>
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+                <path d="M7 10L12 15L17 10" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+        </div>
+    </header>
+
+    <!-- ===== RECORDING SECTION ===== -->
+    <section class="recorder" id="recorder">
+        <div class="container">
+            <!-- Status Display -->
+            <div class="recorder__status" id="recorderStatus">
+                <div class="status-ring" id="statusRing">
+                    <div class="status-ring__inner">
+                        <span class="status-ring__icon" id="statusIcon">🎤</span>
+                    </div>
+                </div>
+                <h2 class="recorder__status-text" id="statusText">Bereit zum Testen</h2>
+                <p class="recorder__status-sub" id="statusSub">Drücke den Button und lass den Ball auf eine harte Oberfläche fallen</p>
+            </div>
+
+            <!-- Countdown Overlay -->
+            <div class="countdown" id="countdown" hidden>
+                <div class="countdown__number" id="countdownNumber">3</div>
+                <p class="countdown__text">Ball bereithalten...</p>
+            </div>
+
+            <!-- Waveform Visualization -->
+            <div class="waveform-container" id="waveformContainer">
+                <canvas id="waveformCanvas" class="waveform-canvas"></canvas>
+                <div class="waveform__peaks" id="waveformPeaks"></div>
+            </div>
+
+            <!-- Bounce Counter -->
+            <div class="bounce-counter" id="bounceCounter" hidden>
+                <div class="bounce-counter__dots">
+                    <div class="bounce-dot" id="dot1">
+                        <div class="bounce-dot__circle"></div>
+                        <span>1. Aufprall</span>
+                    </div>
+                    <div class="bounce-dot__line" id="line1"></div>
+                    <div class="bounce-dot" id="dot2">
+                        <div class="bounce-dot__circle"></div>
+                        <span>2. Aufprall</span>
+                    </div>
+                    <div class="bounce-dot__line" id="line2"></div>
+                    <div class="bounce-dot" id="dot3">
+                        <div class="bounce-dot__circle"></div>
+                        <span>3. Aufprall</span>
+                    </div>
+                </div>
+                <p class="bounce-counter__info" id="bounceInfo">Warte auf Aufprall...</p>
+            </div>
+
+            <!-- Action Buttons -->
+            <div class="recorder__actions" id="recorderActions">
+                <button class="btn btn--primary btn--glow" id="recordBtn" hidden>
+                    <span class="btn__icon">🎤</span>
+                    <span class="btn__text">Aufnahme starten</span>
+                </button>
+                <button class="btn btn--secondary" id="cancelBtn" hidden>
+                    <span class="btn__text">Abbrechen</span>
+                </button>
+                <button class="btn btn--primary" id="retryBtn" hidden>
+                    <span class="btn__icon">🔄</span>
+                    <span class="btn__text">Neuer Test</span>
+                </button>
+            </div>
+        </div>
+    </section>
+
+    <!-- ===== RESULT SECTION ===== -->
+    <section class="result" id="result" hidden>
+        <div class="container">
+            <div class="result__card glass-card">
+                <h2 class="result__title">Dein Ergebnis</h2>
+                
+                <!-- SVG Gauge -->
+                <div class="gauge" id="gauge">
+                    <svg class="gauge__svg" viewBox="0 0 200 200">
+                        <defs>
+                            <linearGradient id="gaugeGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+                                <stop offset="0%" style="stop-color:#ff4444"/>
+                                <stop offset="25%" style="stop-color:#ff9800"/>
+                                <stop offset="50%" style="stop-color:#ffeb3b"/>
+                                <stop offset="75%" style="stop-color:#8bc34a"/>
+                                <stop offset="100%" style="stop-color:#00c853"/>
+                            </linearGradient>
+                        </defs>
+                        <!-- Background Arc -->
+                        <circle class="gauge__bg" cx="100" cy="100" r="85" 
+                                fill="none" stroke="rgba(255,255,255,0.05)" stroke-width="12"
+                                stroke-dasharray="400.35" stroke-dashoffset="133.45"
+                                transform="rotate(150 100 100)" stroke-linecap="round"/>
+                        <!-- Value Arc -->
+                        <circle class="gauge__fill" id="gaugeFill" cx="100" cy="100" r="85" 
+                                fill="none" stroke="url(#gaugeGradient)" stroke-width="12"
+                                stroke-dasharray="400.35" stroke-dashoffset="400.35"
+                                transform="rotate(150 100 100)" stroke-linecap="round"/>
+                    </svg>
+                    <div class="gauge__center">
+                        <span class="gauge__value" id="gaugeValue">0.00</span>
+                        <span class="gauge__label">COR-Wert</span>
+                    </div>
+                </div>
+
+                <!-- Rating -->
+                <div class="result__rating" id="resultRating">
+                    <span class="result__rating-icon" id="ratingIcon">⭐</span>
+                    <span class="result__rating-text" id="ratingText">Bewertung</span>
+                </div>
+                <p class="result__description" id="resultDescription">
+                    Beschreibung des Ergebnisses
+                </p>
+
+                <!-- Details -->
+                <div class="result__details">
+                    <div class="result__detail-item">
+                        <span class="result__detail-label">Bounce 1 → 2</span>
+                        <span class="result__detail-value" id="time1">–</span>
+                    </div>
+                    <div class="result__detail-item">
+                        <span class="result__detail-label">Bounce 2 → 3</span>
+                        <span class="result__detail-value" id="time2">–</span>
+                    </div>
+                    <div class="result__detail-item">
+                        <span class="result__detail-label">COR (t₂/t₁)</span>
+                        <span class="result__detail-value" id="corDetail">–</span>
+                    </div>
+                </div>
+
+                <!-- Ball name input -->
+                <div class="result__name-input">
+                    <input type="text" id="ballName" class="input" placeholder="Ball-Name (optional, z.B. 'Titleist Pro V1')" maxlength="40">
+                </div>
+
+                <div class="result__actions">
+                    <button class="btn btn--primary" id="saveResultBtn">
+                        <span class="btn__icon">💾</span>
+                        <span class="btn__text">Ergebnis speichern</span>
+                    </button>
+                    <button class="btn btn--secondary" id="newTestBtn">
+                        <span class="btn__icon">🔄</span>
+                        <span class="btn__text">Neuer Test</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ===== HISTORY SECTION ===== -->
+    <section class="history" id="history">
+        <div class="container">
+            <div class="section-header">
+                <h2 class="section-title">Testverlauf</h2>
+                <button class="btn btn--ghost" id="clearHistoryBtn">
+                    <span class="btn__text">Verlauf löschen</span>
+                </button>
+            </div>
+            <div class="history__grid" id="historyGrid">
+                <!-- History cards will be dynamically inserted -->
+            </div>
+            <div class="history__empty" id="historyEmpty">
+                <span class="history__empty-icon">📋</span>
+                <p>Noch keine Tests durchgeführt</p>
+                <p class="history__empty-sub">Starte deinen ersten Bounce-Test!</p>
+            </div>
+        </div>
+    </section>
+
+    <!-- ===== HOW-TO SECTION ===== -->
+    <section class="howto" id="howto">
+        <div class="container">
+            <h2 class="section-title section-title--center">So funktioniert's</h2>
+            <div class="howto__steps">
+                <div class="howto__step glass-card">
+                    <div class="howto__step-number">1</div>
+                    <div class="howto__step-icon">📱</div>
+                    <h3>App starten</h3>
+                    <p>Erlaube den Mikrofon-Zugriff und drücke den Start-Button. Ein 3-Sekunden-Countdown gibt dir Zeit.</p>
+                </div>
+                <div class="howto__step glass-card">
+                    <div class="howto__step-number">2</div>
+                    <div class="howto__step-icon">🏌️</div>
+                    <h3>Ball fallen lassen</h3>
+                    <p>Lass den Golfball aus ca. 1 Meter Höhe auf eine harte, glatte Oberfläche fallen (Fliesen, Beton, Stein).</p>
+                </div>
+                <div class="howto__step glass-card">
+                    <div class="howto__step-number">3</div>
+                    <div class="howto__step-icon">📊</div>
+                    <h3>Ergebnis ablesen</h3>
+                    <p>Die App erkennt 3 Aufpraller und berechnet die Elastizität (COR). Du bekommst sofort eine Bewertung.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ===== SCIENCE SECTION ===== -->
+    <section class="science" id="science">
+        <div class="container">
+            <div class="science__content glass-card">
+                <h2 class="section-title">Die Physik dahinter 🔬</h2>
+                <div class="science__grid">
+                    <div class="science__text">
+                        <p>
+                            Der <strong>Coefficient of Restitution (COR)</strong> beschreibt, wie viel Energie ein Ball 
+                            nach dem Aufprall behält. Ein COR von 1.0 wäre ein perfekt elastischer Stoß 
+                            (keine Energieverluste), ein COR von 0 ein vollkommen unelastischer Stoß.
+                        </p>
+                        <p>
+                            Wenn ein Ball aus der Höhe <em>h</em> fällt, springt er auf die Höhe <em>h × COR²</em> zurück. 
+                            Da die Flugzeit proportional zur Wurzel der Höhe ist, können wir aus dem 
+                            <strong>Verhältnis der Zeitabstände</strong> zwischen den Aufprallern direkt den COR berechnen:
+                        </p>
+                        <div class="science__formula">
+                            <span>COR = t₂ / t₁</span>
+                        </div>
+                        <p>
+                            Neue Golfbälle haben typischerweise einen COR von <strong>0.78–0.83</strong>. 
+                            Lakeballs können je nach Zustand deutlich darunter liegen.
+                        </p>
+                    </div>
+                    <div class="science__diagram">
+                        <div class="bounce-diagram">
+                            <div class="bounce-diagram__ball" id="demoBall"></div>
+                            <div class="bounce-diagram__ground"></div>
+                            <div class="bounce-diagram__labels">
+                                <span class="bounce-diagram__label" style="left: 15%;">h₀</span>
+                                <span class="bounce-diagram__label" style="left: 42%;">h₁ = h₀·e²</span>
+                                <span class="bounce-diagram__label" style="left: 70%;">h₂ = h₁·e²</span>
+                            </div>
+                            <div class="bounce-diagram__times">
+                                <span class="bounce-diagram__time" style="left: 25%;">← t₁ →</span>
+                                <span class="bounce-diagram__time" style="left: 58%;">← t₂ →</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ===== FOOTER ===== -->
+    <footer class="footer">
+        <div class="container">
+            <div class="footer__content">
+                <p class="footer__brand">BounceCheck ⛳</p>
+                <p class="footer__text">
+                    Gebaut mit ❤️ für Golfer. Nutzt die Web Audio API für Echtzeit-Analyse.
+                </p>
+                <p class="footer__copyright">© 2026 – Keine Gewähr auf die Messergebnisse.</p>
+            </div>
+        </div>
+    </footer>
+
+    <!-- Confetti Canvas -->
+    <canvas id="confettiCanvas" aria-hidden="true"></canvas>
+
+    <script src="app.js"></script>
+</body>
+</html>
