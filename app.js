@@ -314,6 +314,14 @@
             state.sourceNode.connect(state.processorNode);
             state.processorNode.connect(state.audioContext.destination);
 
+            // CRITICAL: On mobile, AudioContext starts suspended.
+            // Must resume() after user gesture.
+            if (state.audioContext.state === 'suspended') {
+                await state.audioContext.resume();
+            }
+
+            console.log('[BounceCheck] ✅ Audio initialized. State:', state.audioContext.state);
+
             return true;
         } catch (err) {
             console.error('Microphone access denied:', err);
@@ -917,7 +925,7 @@
         resetBounceCounter();
         resetWaveform();
 
-        dom.countdown.hidden = true;
+        dom.countdown.classList.remove('countdown--visible');
         dom.result.hidden = true;
         dom.recordBtn.hidden = true;
         dom.cancelBtn.hidden = true;
@@ -955,7 +963,7 @@
 
         // Countdown with SVG ring animation
         state.phase = 'countdown';
-        dom.countdown.hidden = false;
+        dom.countdown.classList.add('countdown--visible');
         const RING_CIRCUMFERENCE = 339.29; // 2 * PI * 54
 
         for (let i = CONFIG.countdownSeconds; i > 0; i--) {
@@ -989,7 +997,7 @@
         // Reset for next time
         dom.countdownNumber.style.fontSize = '';
         dom.countdownText.textContent = 'Ball bereithalten...';
-        dom.countdown.hidden = true;
+        dom.countdown.classList.remove('countdown--visible');
 
         // Show cancel button
         dom.cancelBtn.hidden = false;
