@@ -53,8 +53,24 @@
 
             <!-- Countdown Overlay -->
             <div class="countdown" id="countdown" hidden>
-                <div class="countdown__number" id="countdownNumber">3</div>
-                <p class="countdown__text">Ball bereithalten...</p>
+                <div class="countdown__ring-wrapper">
+                    <svg class="countdown__ring" viewBox="0 0 120 120">
+                        <circle class="countdown__ring-bg" cx="60" cy="60" r="54"
+                                fill="none" stroke="rgba(255,255,255,0.06)" stroke-width="4"/>
+                        <circle class="countdown__ring-progress" id="countdownRing" cx="60" cy="60" r="54"
+                                fill="none" stroke="url(#countdownGradient)" stroke-width="4"
+                                stroke-dasharray="339.29" stroke-dashoffset="0"
+                                stroke-linecap="round" transform="rotate(-90 60 60)"/>
+                        <defs>
+                            <linearGradient id="countdownGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+                                <stop offset="0%" style="stop-color:#00c853"/>
+                                <stop offset="100%" style="stop-color:#ffd700"/>
+                            </linearGradient>
+                        </defs>
+                    </svg>
+                    <span class="countdown__number" id="countdownNumber">3</span>
+                </div>
+                <p class="countdown__text" id="countdownText">Ball bereithalten...</p>
             </div>
 
             <!-- Waveform Visualization -->

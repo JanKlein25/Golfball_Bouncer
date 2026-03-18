@@ -13,13 +13,14 @@
         // Audio
         sampleRate: 44100,
         fftSize: 2048,
+        scriptBufferSize: 4096,          // ScriptProcessorNode buffer size
         // Peak detection
-        peakThresholdMultiplier: 4.5,    // multiplier over noise floor for peak
-        minPeakGap: 70,                  // minimum ms between peaks
-        maxListenTime: 5000,             // max ms to listen for bounces
+        peakThresholdMultiplier: 3.0,    // multiplier over noise floor for peak
+        minPeakGap: 150,                 // minimum ms between peaks (cooldown for echo)
+        maxListenTime: 8000,             // max ms to listen for bounces
         requiredPeaks: 3,
         // Noise floor
-        noiseCalibrationMs: 300,         // ms to calibrate noise floor
+        noiseCalibrationMs: 500,         // ms to calibrate noise floor
         // COR
         corMin: 0.20,
         corMax: 0.95,
@@ -77,6 +78,8 @@
         statusSub: $('#statusSub'),
         countdown: $('#countdown'),
         countdownNumber: $('#countdownNumber'),
+        countdownRing: $('#countdownRing'),
+        countdownText: $('#countdownText'),
         waveformContainer: $('#waveformContainer'),
         waveformCanvas: $('#waveformCanvas'),
         waveformPeaks: $('#waveformPeaks'),
@@ -295,11 +298,21 @@
             });
 
             state.sourceNode = state.audioContext.createMediaStreamSource(stream);
+
+            // Analyser for waveform visualization only
             state.analyser = state.audioContext.createAnalyser();
             state.analyser.fftSize = CONFIG.fftSize;
-            state.analyser.smoothingTimeConstant = 0.3;
+            state.analyser.smoothingTimeConstant = 0; // No smoothing – raw data
+
+            // ScriptProcessorNode for lossless peak detection
+            // (processes every audio buffer, unlike requestAnimationFrame)
+            state.processorNode = state.audioContext.createScriptProcessor(
+                CONFIG.scriptBufferSize, 1, 1
+            );
 
             state.sourceNode.connect(state.analyser);
+            state.sourceNode.connect(state.processorNode);
+            state.processorNode.connect(state.audioContext.destination);
 
             return true;
         } catch (err) {
@@ -313,6 +326,15 @@
         if (state.waveformAnimFrame) {
             cancelAnimationFrame(state.waveformAnimFrame);
             state.waveformAnimFrame = null;
+        }
+        if (state.processorNode) {
+            state.processorNode.onaudioprocess = null;
+            try { state.processorNode.disconnect(); } catch(e) {}
+            state.processorNode = null;
+        }
+        if (state.sourceNode) {
+            try { state.sourceNode.disconnect(); } catch(e) {}
+            state.sourceNode = null;
         }
         if (state.mediaStream) {
             state.mediaStream.getTracks().forEach((t) => t.stop());
@@ -426,13 +448,9 @@
     }
 
     // ============================
-    // Bounce Detection
+    // Bounce Detection (ScriptProcessorNode – lossless)
     // ============================
     function startBounceDetection() {
-        const analyser = state.analyser;
-        const bufferLength = analyser.frequencyBinCount;
-        const dataArray = new Float32Array(bufferLength);
-
         state.peaks = [];
         state.listenStartTime = performance.now();
 
@@ -440,54 +458,92 @@
         let calibrated = false;
         let calibrationStart = performance.now();
         let lastPeakTime = 0;
+        let noiseFloor = 0;
+        let firstPeakAmplitude = 0;
+        let inCooldown = false;
 
-        function processAudio() {
+        console.log('[BounceCheck] 🎯 Starting bounce detection...');
+        console.log('[BounceCheck] Buffer size:', CONFIG.scriptBufferSize);
+        console.log('[BounceCheck] Sample rate:', state.audioContext.sampleRate);
+
+        // Use ScriptProcessorNode – fires for EVERY audio buffer, no data loss
+        state.processorNode.onaudioprocess = function(event) {
             if (state.phase !== 'listening' && state.phase !== 'calibrating') return;
 
-            analyser.getFloatTimeDomainData(dataArray);
-
-            // Compute RMS
-            let sum = 0;
-            for (let i = 0; i < bufferLength; i++) {
-                sum += dataArray[i] * dataArray[i];
-            }
-            const rms = Math.sqrt(sum / bufferLength);
-
+            const inputData = event.inputBuffer.getChannelData(0);
+            const bufferLength = inputData.length;
             const now = performance.now();
 
-            // Calibration phase
+            // Compute peak amplitude (max absolute sample value in this buffer)
+            let maxAmp = 0;
+            let rms = 0;
+            for (let i = 0; i < bufferLength; i++) {
+                const absVal = Math.abs(inputData[i]);
+                if (absVal > maxAmp) maxAmp = absVal;
+                rms += inputData[i] * inputData[i];
+            }
+            rms = Math.sqrt(rms / bufferLength);
+
+            // ---- Calibration phase ----
             if (!calibrated) {
-                noiseFloorSamples.push(rms);
+                noiseFloorSamples.push(maxAmp);
                 if (now - calibrationStart >= CONFIG.noiseCalibrationMs) {
-                    // Calculate noise floor as mean + 2*stddev
+                    // Calculate noise floor as mean + 3*stddev of max amplitudes
                     const mean = noiseFloorSamples.reduce((a, b) => a + b, 0) / noiseFloorSamples.length;
                     const variance = noiseFloorSamples.reduce((a, b) => a + (b - mean) ** 2, 0) / noiseFloorSamples.length;
                     const stddev = Math.sqrt(variance);
-                    state.noiseFloor = mean + 2 * stddev;
+                    noiseFloor = mean + 3 * stddev;
+                    state.noiseFloor = noiseFloor;
                     calibrated = true;
                     state.phase = 'listening';
                     state.listenStartTime = now;
 
+                    console.log('[BounceCheck] ✅ Calibration done.');
+                    console.log('[BounceCheck]    Noise floor (maxAmp):', noiseFloor.toFixed(5));
+                    console.log('[BounceCheck]    Mean:', mean.toFixed(5), 'StdDev:', stddev.toFixed(5));
+                    console.log('[BounceCheck]    Threshold:', Math.max(noiseFloor * CONFIG.peakThresholdMultiplier, 0.015).toFixed(5));
+
                     updateStatus('listening', '🎤', 'Aufnahme läuft...', 'Lass den Ball jetzt fallen!');
                     dom.bounceCounter.hidden = false;
                 }
-                requestAnimationFrame(processAudio);
                 return;
             }
 
-            // Compute peak amplitude (max absolute value)
-            let maxAmp = 0;
-            for (let i = 0; i < bufferLength; i++) {
-                const absVal = Math.abs(dataArray[i]);
-                if (absVal > maxAmp) maxAmp = absVal;
+            // ---- Peak Detection ----
+            // Adaptive threshold: lower multiplier after first peak since subsequent bounces are quieter
+            let threshold;
+            if (state.peaks.length === 0) {
+                threshold = Math.max(noiseFloor * CONFIG.peakThresholdMultiplier, 0.015);
+            } else {
+                // After first peak: expect subsequent peaks to be quieter
+                // Use a fraction of the first peak amplitude as threshold
+                threshold = Math.max(
+                    firstPeakAmplitude * 0.15,
+                    noiseFloor * 2.0,
+                    0.01
+                );
             }
 
-            // Peak detection
-            const threshold = Math.max(state.noiseFloor * CONFIG.peakThresholdMultiplier, 0.02);
             const timeSinceLastPeak = now - lastPeakTime;
 
-            if (rms > threshold && timeSinceLastPeak > CONFIG.minPeakGap) {
-                // Found a peak!
+            // Check if we're in cooldown (echo/reverb suppression)
+            if (inCooldown && timeSinceLastPeak < CONFIG.minPeakGap) {
+                return; // Skip this buffer – still in cooldown
+            }
+            inCooldown = false;
+
+            if (maxAmp > threshold && timeSinceLastPeak > CONFIG.minPeakGap) {
+                // ---- Peak Validation ----
+                // A real bounce has a sharp attack: the max amplitude should be
+                // significantly higher than the RMS (crest factor > 2)
+                const crestFactor = maxAmp / (rms + 0.0001);
+                if (crestFactor < 1.5) {
+                    // Too flat – likely sustained noise, not an impact
+                    console.log('[BounceCheck] ⚠️ Rejected: crest factor too low:', crestFactor.toFixed(2), 'maxAmp:', maxAmp.toFixed(4));
+                    return;
+                }
+
+                // Found a valid peak!
                 const peakTime = now;
                 state.peaks.push({
                     time: peakTime,
@@ -495,30 +551,42 @@
                     rms: rms,
                 });
                 lastPeakTime = peakTime;
+                inCooldown = true;
+
+                // Store first peak amplitude for adaptive threshold
+                if (state.peaks.length === 1) {
+                    firstPeakAmplitude = maxAmp;
+                }
+
+                console.log(`[BounceCheck] 🏓 Peak #${state.peaks.length} detected!`);
+                console.log(`   Amplitude: ${maxAmp.toFixed(4)}, RMS: ${rms.toFixed(4)}, Crest: ${crestFactor.toFixed(2)}`);
+                console.log(`   Threshold was: ${threshold.toFixed(4)}`);
+                if (state.peaks.length > 1) {
+                    const dt = state.peaks[state.peaks.length - 1].time - state.peaks[state.peaks.length - 2].time;
+                    console.log(`   Time since last peak: ${dt.toFixed(1)} ms`);
+                }
 
                 // Update UI
                 onPeakDetected(state.peaks.length);
-
-                // Add peak marker to waveform
                 addPeakMarker(state.peaks.length);
 
                 if (state.peaks.length >= CONFIG.requiredPeaks) {
-                    // We have enough peaks
                     state.phase = 'analyzing';
+                    console.log('[BounceCheck] ✅ All peaks detected! Analyzing...');
                     analyzeResult();
                     return;
                 }
             }
 
-            // Timeout check
+            // ---- Timeout check ----
             if (now - state.listenStartTime > CONFIG.maxListenTime) {
                 if (state.peaks.length >= 2) {
-                    // We have at least 2 peaks, try to compute with what we have
                     state.phase = 'analyzing';
+                    console.log('[BounceCheck] ⏰ Timeout with', state.peaks.length, 'peaks. Analyzing...');
                     analyzeResult();
                 } else {
-                    // Not enough peaks
                     state.phase = 'idle';
+                    console.log('[BounceCheck] ❌ Timeout – only', state.peaks.length, 'peak(s) detected.');
                     updateStatus('idle', '⚠️', 'Keine Aufpraller erkannt',
                         'Versuche es erneut – achte auf eine harte Oberfläche und wenig Hintergrundgeräusche.');
                     showRetryButton();
@@ -526,13 +594,10 @@
                 }
                 return;
             }
-
-            requestAnimationFrame(processAudio);
-        }
+        };
 
         state.phase = 'calibrating';
         updateStatus('active', '🔊', 'Kalibriere Mikrofon...', 'Bitte kurz still sein...');
-        requestAnimationFrame(processAudio);
     }
 
     function addPeakMarker(peakNumber) {
@@ -604,6 +669,13 @@
 
         // Get rating
         const rating = getRating(cor);
+
+        console.log('[BounceCheck] 📊 === RESULT ===');
+        console.log(`   t1 (Bounce 1→2): ${t1.toFixed(1)} ms`);
+        if (t2) console.log(`   t2 (Bounce 2→3): ${t2.toFixed(1)} ms`);
+        console.log(`   COR = ${t2 ? 't2/t1' : 'sqrt(amp2/amp1)'} = ${cor.toFixed(4)}`);
+        console.log(`   Rating: ${rating.icon} ${rating.label}`);
+        console.log('[BounceCheck] ================');
 
         state.lastResult = {
             cor: cor,
@@ -881,19 +953,42 @@
         // Start waveform visualization
         startWaveformVisualization();
 
-        // Countdown
+        // Countdown with SVG ring animation
         state.phase = 'countdown';
         dom.countdown.hidden = false;
+        const RING_CIRCUMFERENCE = 339.29; // 2 * PI * 54
 
         for (let i = CONFIG.countdownSeconds; i > 0; i--) {
+            // Set number with fade-in animation
             dom.countdownNumber.textContent = i;
             dom.countdownNumber.style.animation = 'none';
             void dom.countdownNumber.offsetHeight; // force reflow
-            dom.countdownNumber.style.animation = 'countPulse 1s ease-in-out infinite';
+            dom.countdownNumber.style.animation = 'countFadeIn 0.35s cubic-bezier(0.34, 1.56, 0.64, 1)';
+
+            // Reset ring to full, then animate to empty over 1 second
+            dom.countdownRing.classList.remove('countdown__ring--animating');
+            dom.countdownRing.style.strokeDashoffset = '0';
+            void dom.countdownRing.offsetHeight; // force reflow
+            dom.countdownRing.classList.add('countdown__ring--animating');
+            dom.countdownRing.style.strokeDashoffset = RING_CIRCUMFERENCE;
+
             await sleep(1000);
             if (state.phase !== 'countdown') return; // cancelled
         }
 
+        // Show "Los!" briefly
+        dom.countdownNumber.textContent = 'Los!';
+        dom.countdownNumber.style.animation = 'none';
+        dom.countdownNumber.style.fontSize = '2.5rem';
+        void dom.countdownNumber.offsetHeight;
+        dom.countdownNumber.style.animation = 'countFadeIn 0.35s cubic-bezier(0.34, 1.56, 0.64, 1)';
+        dom.countdownText.textContent = 'Ball jetzt fallen lassen!';
+        await sleep(600);
+        if (state.phase !== 'countdown') return;
+
+        // Reset for next time
+        dom.countdownNumber.style.fontSize = '';
+        dom.countdownText.textContent = 'Ball bereithalten...';
         dom.countdown.hidden = true;
 
         // Show cancel button
