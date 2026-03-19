@@ -469,6 +469,7 @@
         let noiseFloor = 0;
         let firstPeakAmplitude = 0;
         let inCooldown = false;
+        let detectionComplete = false; // Hard-stop flag – prevents queued events from processing
 
         console.log('[BounceCheck] 🎯 Starting bounce detection...');
         console.log('[BounceCheck] Buffer size:', CONFIG.scriptBufferSize);
@@ -476,6 +477,9 @@
 
         // Use ScriptProcessorNode – fires for EVERY audio buffer, no data loss
         state.processorNode.onaudioprocess = function(event) {
+            // HARD STOP – must be the very first check.
+            // On mobile, queued events can fire after we've already found 3 peaks.
+            if (detectionComplete) return;
             if (state.phase !== 'listening' && state.phase !== 'calibrating') return;
 
             const inputData = event.inputBuffer.getChannelData(0);
@@ -551,6 +555,12 @@
                     return;
                 }
 
+                // Double-check we haven't already collected enough peaks
+                if (state.peaks.length >= CONFIG.requiredPeaks) {
+                    detectionComplete = true;
+                    return;
+                }
+
                 // Found a valid peak!
                 const peakTime = now;
                 state.peaks.push({
@@ -579,6 +589,8 @@
                 addPeakMarker(state.peaks.length);
 
                 if (state.peaks.length >= CONFIG.requiredPeaks) {
+                    // SET FLAG BEFORE analyzeResult to block any queued events
+                    detectionComplete = true;
                     state.phase = 'analyzing';
                     console.log('[BounceCheck] ✅ All peaks detected! Analyzing...');
                     analyzeResult();
@@ -588,6 +600,7 @@
 
             // ---- Timeout check ----
             if (now - state.listenStartTime > CONFIG.maxListenTime) {
+                detectionComplete = true; // Hard stop
                 if (state.peaks.length >= 2) {
                     state.phase = 'analyzing';
                     console.log('[BounceCheck] ⏰ Timeout with', state.peaks.length, 'peaks. Analyzing...');
