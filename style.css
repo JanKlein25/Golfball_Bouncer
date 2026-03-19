@@ -1122,73 +1122,109 @@ body {
 .bounce-diagram {
     position: relative;
     height: 280px;
-    background: rgba(0, 0, 0, 0.2);
+    background: rgba(0, 0, 0, 0.25);
     border-radius: var(--radius-lg);
     overflow: hidden;
-    padding: var(--space-lg);
 }
 
 .bounce-diagram__ball {
     position: absolute;
-    width: 20px;
-    height: 20px;
+    width: 18px;
+    height: 18px;
     background: radial-gradient(circle at 35% 35%, #fff, var(--green-500));
     border-radius: var(--radius-full);
-    box-shadow: 0 0 10px rgba(0, 200, 83, 0.4);
-    animation: demoBounce 4s ease-in-out infinite;
+    box-shadow: 0 0 12px rgba(0, 200, 83, 0.5);
+    z-index: 2;
+    /* Separate X and Y for realistic physics */
+    animation: ballX 5s linear infinite, ballY 5s ease-in infinite;
 }
 
-@keyframes demoBounce {
-    0%   { left: 10%; top: 10%; }
-    10%  { left: 10%; top: 75%; }
-    15%  { left: 25%; top: 75%; }
-    30%  { left: 40%; top: 30%; }
-    45%  { left: 55%; top: 75%; }
-    50%  { left: 55%; top: 75%; }
-    65%  { left: 68%; top: 45%; }
-    80%  { left: 80%; top: 75%; }
-    85%  { left: 80%; top: 75%; }
-    100% { left: 10%; top: 10%; }
+/* Horizontal: ball drifts right steadily over the whole cycle */
+@keyframes ballX {
+    0%    { left: 10%; }
+    12%   { left: 12%; }  /* impact 1 */
+    35%   { left: 40%; }  /* impact 2 */
+    55%   { left: 62%; }  /* impact 3 */
+    70%   { left: 78%; }  /* impact 4 */
+    82%   { left: 82%; }  /* settle */
+    90%   { left: 82%; }
+    100%  { left: 10%; }
+}
+
+/* Vertical: parabolic arcs with decreasing height */
+@keyframes ballY {
+    /* Drop from h₀ */
+    0%    { top: 5%;  animation-timing-function: ease-in; }
+    12%   { top: 80%; animation-timing-function: ease-out; }
+    /* Bounce 1 → h₁ */
+    24%   { top: 28%; animation-timing-function: ease-in; }
+    35%   { top: 80%; animation-timing-function: ease-out; }
+    /* Bounce 2 → h₂ */
+    45%   { top: 45%; animation-timing-function: ease-in; }
+    55%   { top: 80%; animation-timing-function: ease-out; }
+    /* Bounce 3 → small */
+    63%   { top: 60%; animation-timing-function: ease-in; }
+    70%   { top: 80%; }
+    /* Settle & pause */
+    82%   { top: 80%; }
+    90%   { top: 80%; }
+    /* Reset (quick fade) */
+    95%   { top: 80%; opacity: 0; }
+    96%   { top: 5%;  opacity: 0; }
+    100%  { top: 5%;  opacity: 1; }
 }
 
 .bounce-diagram__ground {
     position: absolute;
-    bottom: 40px;
-    left: var(--space-lg);
-    right: var(--space-lg);
+    bottom: 32px;
+    left: var(--space-md);
+    right: var(--space-md);
     height: 2px;
-    background: linear-gradient(90deg, transparent, var(--text-muted), transparent);
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent);
 }
 
-.bounce-diagram__labels {
+/* Impact dots on ground */
+.bounce-diagram__impact {
     position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
+    bottom: 28px;
+    width: 8px;
+    height: 8px;
+    border-radius: var(--radius-full);
+    background: var(--green-500);
+    opacity: 0.4;
+    transform: translateX(-4px);
+    box-shadow: 0 0 8px rgba(0, 200, 83, 0.3);
 }
 
-.bounce-diagram__label {
+/* Height indicator lines */
+.bounce-diagram__height-line {
     position: absolute;
-    top: 15%;
-    font-size: var(--font-size-xs);
+    width: 1px;
+    border-left: 1px dashed rgba(255, 255, 255, 0.12);
+}
+
+.bounce-diagram__height-line span {
+    position: absolute;
+    top: -4px;
+    left: 6px;
+    font-size: 0.65rem;
     color: var(--green-500);
     font-weight: 600;
     font-family: 'Courier New', monospace;
+    white-space: nowrap;
 }
 
-.bounce-diagram__times {
+/* Time labels between impacts */
+.bounce-diagram__time-label {
     position: absolute;
-    bottom: 12px;
-    left: 0;
-    right: 0;
-}
-
-.bounce-diagram__time {
-    position: absolute;
-    font-size: var(--font-size-xs);
+    bottom: 10px;
+    text-align: center;
+    font-size: 0.65rem;
     color: var(--gold-400);
     font-weight: 600;
+    font-family: 'Courier New', monospace;
+    border-top: 1px solid rgba(255, 215, 0, 0.25);
+    padding-top: 2px;
 }
 
 /* ===========================================
