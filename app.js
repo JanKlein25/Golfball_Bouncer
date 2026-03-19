@@ -15,7 +15,7 @@
         fftSize: 2048,
         scriptBufferSize: 4096,          // ScriptProcessorNode buffer size
         // Peak detection
-        peakThresholdMultiplier: 3.0,    // multiplier over noise floor for peak
+        peakThresholdMultiplier: 2.0,    // multiplier over RMS noise floor for peak
         minPeakGap: 150,                 // minimum ms between peaks (cooldown for echo)
         maxListenTime: 8000,             // max ms to listen for bounces
         requiredPeaks: 3,
@@ -498,22 +498,31 @@
 
             // ---- Calibration phase ----
             if (!calibrated) {
-                noiseFloorSamples.push(maxAmp);
+                // Collect BOTH RMS and maxAmp during calibration
+                noiseFloorSamples.push({ rms: rms, maxAmp: maxAmp });
                 if (now - calibrationStart >= CONFIG.noiseCalibrationMs) {
-                    // Calculate noise floor as mean + 3*stddev of max amplitudes
-                    const mean = noiseFloorSamples.reduce((a, b) => a + b, 0) / noiseFloorSamples.length;
-                    const variance = noiseFloorSamples.reduce((a, b) => a + (b - mean) ** 2, 0) / noiseFloorSamples.length;
-                    const stddev = Math.sqrt(variance);
-                    noiseFloor = mean + 3 * stddev;
+                    // Use RMS for noise floor (stable, not inflated by random spikes)
+                    const rmsSamples = noiseFloorSamples.map(s => s.rms);
+                    const maxSamples = noiseFloorSamples.map(s => s.maxAmp);
+
+                    const rmsMean = rmsSamples.reduce((a, b) => a + b, 0) / rmsSamples.length;
+                    const rmsVariance = rmsSamples.reduce((a, b) => a + (b - rmsMean) ** 2, 0) / rmsSamples.length;
+                    const rmsStddev = Math.sqrt(rmsVariance);
+                    const rmsNoiseFloor = rmsMean + 2 * rmsStddev;
+
+                    const maxMean = maxSamples.reduce((a, b) => a + b, 0) / maxSamples.length;
+
+                    // Noise floor = RMS-based (stable), threshold uses maxAmp comparison
+                    noiseFloor = rmsNoiseFloor;
                     state.noiseFloor = noiseFloor;
                     calibrated = true;
                     state.phase = 'listening';
                     state.listenStartTime = now;
 
                     console.log('[BounceCheck] ✅ Calibration done.');
-                    console.log('[BounceCheck]    Noise floor (maxAmp):', noiseFloor.toFixed(5));
-                    console.log('[BounceCheck]    Mean:', mean.toFixed(5), 'StdDev:', stddev.toFixed(5));
-                    console.log('[BounceCheck]    Threshold:', Math.max(noiseFloor * CONFIG.peakThresholdMultiplier, 0.015).toFixed(5));
+                    console.log('[BounceCheck]    RMS noise floor:', rmsNoiseFloor.toFixed(5));
+                    console.log('[BounceCheck]    Avg maxAmp during silence:', maxMean.toFixed(5));
+                    console.log('[BounceCheck]    Initial threshold (maxAmp must exceed):', Math.max(noiseFloor * CONFIG.peakThresholdMultiplier, 0.005).toFixed(5));
 
                     updateStatus('listening', '🎤', 'Aufnahme läuft...', 'Lass den Ball jetzt fallen!');
                     dom.bounceCounter.hidden = false;
@@ -522,17 +531,17 @@
             }
 
             // ---- Peak Detection ----
-            // Adaptive threshold: lower multiplier after first peak since subsequent bounces are quieter
+            // Compare maxAmp (peak) against RMS-derived threshold
             let threshold;
             if (state.peaks.length === 0) {
-                threshold = Math.max(noiseFloor * CONFIG.peakThresholdMultiplier, 0.015);
+                // First peak: needs to clearly exceed the noise
+                threshold = Math.max(noiseFloor * CONFIG.peakThresholdMultiplier, 0.005);
             } else {
                 // After first peak: expect subsequent peaks to be quieter
-                // Use a fraction of the first peak amplitude as threshold
                 threshold = Math.max(
-                    firstPeakAmplitude * 0.15,
-                    noiseFloor * 2.0,
-                    0.01
+                    firstPeakAmplitude * 0.12,
+                    noiseFloor * 1.5,
+                    0.005
                 );
             }
 
@@ -546,10 +555,10 @@
 
             if (maxAmp > threshold && timeSinceLastPeak > CONFIG.minPeakGap) {
                 // ---- Peak Validation ----
-                // A real bounce has a sharp attack: the max amplitude should be
-                // significantly higher than the RMS (crest factor > 2)
+                // A real bounce has a sharp attack: maxAmp should be
+                // significantly higher than the RMS (crest factor)
                 const crestFactor = maxAmp / (rms + 0.0001);
-                if (crestFactor < 1.5) {
+                if (crestFactor < 1.3) {
                     // Too flat – likely sustained noise, not an impact
                     console.log('[BounceCheck] ⚠️ Rejected: crest factor too low:', crestFactor.toFixed(2), 'maxAmp:', maxAmp.toFixed(4));
                     return;
