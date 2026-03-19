@@ -354,6 +354,46 @@ body {
     font-weight: 600;
 }
 
+.hero__creators {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--space-xs);
+    margin-bottom: var(--space-2xl);
+    animation: fadeInUp 0.8s ease-out 0.25s both;
+}
+
+.hero__creators-label {
+    font-size: var(--font-size-xs);
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    font-weight: 500;
+}
+
+.hero__creators-names {
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+    padding: 0.5rem 1.4rem;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 100px;
+    backdrop-filter: blur(8px);
+}
+
+.hero__creator {
+    font-size: var(--font-size-sm);
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.hero__creators-divider {
+    font-size: var(--font-size-xs);
+    color: var(--green-500);
+    font-weight: 700;
+}
+
 #startBtn {
     animation: fadeInUp 0.8s ease-out 0.3s both;
     font-size: var(--font-size-lg);
