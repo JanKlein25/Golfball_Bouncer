@@ -1279,7 +1279,15 @@ body {
     }
 
     .bounce-diagram {
-        height: 200px;
+        height: 300px;
+    }
+
+    .bounce-diagram__height-line span {
+        font-size: 0.6rem;
+    }
+
+    .bounce-diagram__time-label {
+        font-size: 0.55rem;
     }
 
     .result__details {
